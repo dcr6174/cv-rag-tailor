@@ -1,0 +1,9 @@
+CHANDRA QA ENGINEER
+
+SUMMARY
+QA engineer experienced in API testing and test automation.
+
+EXPERIENCE
+Built Selenium and Python regression tests for web applications.
+Reduced regression time by 30%.
+Tested REST APIs with Postman and added tests to CI pipelines.
