@@ -1,42 +1,59 @@
 # Grounded CV RAG Tailor
 
-Tailor your CV to a job description in your browser, without inventing anything. The app retrieves evidence from your base CV, builds a targeted summary from that evidence only, scores the match, shows skill gaps honestly, and exports the result as DOCX or PDF. Everything runs on your own machine. No account, no API key, no upload to any server.
+Tailor your CV to a job description with **proof, not promises**. Every changed line links to the exact base-CV evidence it is allowed to exist because of. Anything the evidence cannot back is reported as a gap or blocked outright - never invented.
 
-![The CV Tailor start screen](docs/screenshot-home.png)
+![Start screen](docs/screenshot-home.png)
+![Requirement coverage matrix](docs/screenshot-results.png)
+![Click a line, see its evidence](docs/screenshot-proof.png)
 
 ## What it does
 
-1. You paste a job description and add your CV (`.txt`, `.md`, `.pdf`, or `.docx`).
-2. The app retrieves the CV passages most relevant to the job description.
-3. You get a keyword match score (0-100), matched skills, skill gaps, and honesty checks.
-4. Your original and tailored CV appear side by side, with every change highlighted and linked to the CV evidence behind it.
-5. You download the tailored CV as DOCX or PDF.
-
-The base CV is the only source of truth. A skill the job wants but your CV does not show appears as a **gap**, never as a fake claim. New numbers that are not in your base CV are flagged.
-
-![Match score, gaps, and side-by-side comparison](docs/screenshot-results.png)
+- **Requirement-coverage matrix, not a fake ATS score.** Real applicant tracking systems run keyword searches and knockout filters; they do not hand candidates a percentage. The app parses the job description into hard and preferred requirements (including years-per-skill) and shows coverage per requirement, with evidence links.
+- **ATS parseability check.** Flags tables, multi-column layouts, non-standard section names, missing contact details, unparseable dates, and over-length CVs - the things that actually break parsers.
+- **A verification gate, not a prompt.** After generation, every line must pass three deterministic checks or it is blocked and removed:
+  1. **Number allowlist** - any number not present in your base CV is blocked.
+  2. **Entity allowlist** - any tool, certification, employer, or title not present in your base CV is blocked.
+  3. **Entailment** - every generated sentence must be entailed by the evidence it cites.
+- **Provenance labels.** Every tailored line is labeled **verbatim** (copied exactly), **rephrased** (same words, reordered), or **reframed** (a new framing of cited evidence). Click any line to see its source evidence, connected visually.
+- **Structured evidence records.** Your CV is parsed into records with role, employer, date range, skills, quantified outcomes, and action-verb class - structure is what makes the guards enforceable.
+- **Page budget.** Choose a 1-page or 2-page CV; the strongest evidence is selected to fit, and omissions are logged.
+- **Batch JD ranking.** Paste several job descriptions and see which roles your CV already fits best, ranked by hard-requirement coverage.
+- **Private by design.** Everything runs locally. Uploaded files (.txt, .md, .pdf, .docx) are processed in memory and never written to disk or sent anywhere.
+- **Export** the reviewed result as DOCX or PDF, with the coverage report attached.
 
 ## Prerequisites
 
-- **Python 3.10 or newer.** Check with `python --version` (Windows) or `python3 --version` (Mac/Linux). Download from [python.org](https://www.python.org/downloads/) if you do not have it. On Windows, tick **"Add python.exe to PATH"** during installation.
-- **Git**, to clone the project. Or download it as a ZIP: on the GitHub page click the green **Code** button, then **Download ZIP**, and unzip it.
+- Python 3.10 or newer
+- Windows, macOS, or Linux
 
-## Set up on Windows (PowerShell)
+Check your Python:
 
-Open PowerShell, then copy and paste each line:
+```powershell
+python --version
+```
+
+If that fails on Windows, install Python from https://www.python.org/downloads/ and tick **Add python.exe to PATH** during setup.
+
+## Setup
+
+**Windows (PowerShell):**
 
 ```powershell
 git clone https://github.com/dcr6174/cv-rag-tailor.git
 cd cv-rag-tailor
 python -m venv .venv
-.venv\Scripts\activate
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 uvicorn cv_tailor.api:app --app-dir src
 ```
 
-Leave the PowerShell window open while you use the app.
+If PowerShell blocks the activate script, run this once first:
 
-## Set up on Mac or Linux (Terminal)
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+**macOS / Linux:**
 
 ```bash
 git clone https://github.com/dcr6174/cv-rag-tailor.git
@@ -47,98 +64,59 @@ pip install -r requirements.txt
 uvicorn cv_tailor.api:app --app-dir src
 ```
 
-Leave the terminal window open while you use the app.
+Then open http://127.0.0.1:8000 in your browser.
 
-## Use the app
+## Try it in one click
 
-1. Open **http://127.0.0.1:8000** in your browser.
-2. Click **"Load the sample job + CV"** for an instant demo, or:
-   - Paste a real job description.
-   - Drop in your CV file (or click "or paste CV text instead").
+1. Start the app and open http://127.0.0.1:8000.
+2. Click **Load the sample job + CV**.
 3. Click **Tailor my CV**.
-4. Read the match score, matched keywords, skill gaps, and the side-by-side comparison.
-5. Click **Download DOCX** or **Download PDF** to save the tailored CV.
+4. Click any tailored line to see the evidence it came from, connected by a line. Check the coverage matrix, the parseability checks, and the provenance labels.
+5. Click **Download DOCX** or **Download PDF**.
 
-To stop the app, press `Ctrl+C` in the terminal window.
+The sample pair covers 1 of 2 hard requirements fully, reports Playwright, CI/CD, and performance testing as honest gaps, and never inserts them into the tailored CV.
 
-### Expected output
+## Batch ranking
 
-For the included sample (a QA automation job description and a matching sample CV) you should see:
+Open the **Batch rank JDs** tab, paste your base CV and several job descriptions separated by a line containing only `---`, and click **Rank these jobs**. You get a sorted table: weighted coverage, hard/preferred requirement counts, and top gaps for each role.
 
-- A match score ring, about **71/100** for the sample pair
-- Green chips for matched keywords such as `python`, `selenium`, `api`
-- Warm chips for gaps such as `playwright` and `performance`, under "reported, not added"
-- A highlighted **TARGETED SUMMARY** on the tailored side, built from retrieved CV evidence
-- Evidence cards (`cv-1`, `cv-2`, ...) showing exactly which CV passages were used
-
-## Common errors and fixes
+## Common errors
 
 | Error | Fix |
 | --- | --- |
-| `python is not recognized` (Windows) | Reinstall Python from python.org and tick **"Add python.exe to PATH"**. Or try `py -m venv .venv` instead of `python -m venv .venv`. |
-| `.venv\Scripts\activate : cannot be loaded because running scripts is disabled` (Windows) | In PowerShell run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`, answer **Y**, then run the activate line again. |
-| `No module named 'cv_tailor'` | You forgot `--app-dir src`. Run `uvicorn cv_tailor.api:app --app-dir src` from inside the project folder. |
-| `pip is not recognized` (Windows) | Use `python -m pip install -r requirements.txt`. |
-| Port 8000 already in use | Run on another port: `uvicorn cv_tailor.api:app --app-dir src --port 8001`, then open http://127.0.0.1:8001. |
-| `Unsupported file type` when uploading | Convert your CV to `.txt`, `.md`, `.pdf`, or `.docx` and try again. |
-| The page shows nothing / connection refused | The app is not running. Go back to the terminal, start it again, and keep that window open. |
+| `python is not recognized` (Windows) | Reinstall Python and tick **Add python.exe to PATH**, then reopen PowerShell. |
+| `cannot be loaded because running scripts is disabled` | Run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` once. |
+| `No module named 'cv_tailor'` | Start the server with `--app-dir src` from the repo folder, as shown above. |
+| `port 8000 is already in use` | Use another port: `uvicorn cv_tailor.api:app --app-dir src --port 8001`. |
+| `Unsupported file type` | Upload .txt, .md, .pdf, or .docx only. |
+| `No readable text was found` | The PDF may be a scanned image; export it as text first. |
 
-## API (for developers)
-
-Interactive docs live at **http://127.0.0.1:8000/docs** while the app runs.
+## API
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /` | The browser interface |
+| `GET /` | Browser interface |
 | `GET /health` | Health check |
-| `GET /samples` | The sample job description and CV as JSON |
-| `POST /tailor` | JSON body `{"job_description": ..., "base_cv": ...}` returns the full tailoring result |
-| `POST /tailor-upload` | Multipart form: `job_description` field plus a `cv` file (`.txt`/`.md`/`.pdf`/`.docx`) |
-| `POST /export/docx` | JSON body with `tailored_cv`, `score`, `matched`, `missing` returns a Word file |
-| `POST /export/pdf` | Same body, returns a PDF |
+| `GET /samples` | Sample job description and CV |
+| `POST /tailor` | Tailor pasted text (`job_description`, `base_cv`, `page_budget` 1-2) |
+| `POST /tailor-upload` | Tailor an uploaded CV file (`.txt`, `.md`, `.pdf`, `.docx`, max 5 MB) |
+| `POST /rank` | Rank several job descriptions against one CV |
+| `POST /export/docx` | Download the tailored CV as DOCX |
+| `POST /export/pdf` | Download the tailored CV as PDF |
 
-`POST /tailor` returns:
+Interactive API docs: http://127.0.0.1:8000/docs
 
-- `tailored_cv`: original CV plus a grounded targeted summary
-- `match_report`: 0-100 keyword coverage, matched terms, missing terms, and evidence coverage
-- `evidence`: ranked source chunks with stable IDs and matched terms
-- `gaps`: JD terms absent from the CV
-- `change_log`: each edit, its reason, and supporting evidence IDs
-- `warnings`: missing-skill and unsupported-number checks
-
-## Why this is RAG
-
-The job description is the query. The base CV is split into evidence chunks, normalized, and ranked by term overlap. Only retrieved chunks may feed the targeted summary, and every change carries evidence IDs so a reviewer can trace it back to the CV.
-
-```text
-JD -> normalization/keywords ----\
-                                  -> evidence retriever -> grounded summary
-Base CV -> chunking/tokenization -/                         |
-            |                                               v
-            +-----------------> ATS report + gaps -> response + change log
-                                                        |
-                                                        v
-                                                fabrication guards
-```
-
-The implementation is deterministic and offline. No API key, hosted LLM, candidate data upload, or external service is required. A production extension can place a schema-constrained LLM behind the same evidence contract and reject output whose claims lack evidence IDs. The ATS-style score is a transparent keyword heuristic, not an employer ATS and not a hiring prediction.
-
-## Run the tests
+## Tests
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest tests/ -q
+pytest
 ```
 
-The suite covers normalization, chunking, retrieval, stable evidence IDs, ATS scoring, missing-skill handling, change provenance, quantified-claim checks, the browser page, file upload and extraction, fabrication-guard enforcement through the upload path, and DOCX/PDF export. 27 tests, all passing.
+47 tests cover evidence parsing, requirement extraction, BM25 retrieval, the verification gates, provenance labels, page budgets, batch ranking, the API, and both export formats.
 
-## Safety and privacy
+## Privacy
 
-- The base CV is the sole experience source; gaps are reported, never inserted.
-- Uploaded files are read in memory and never written to disk or sent anywhere.
-- `.env`, PDFs, DOCX files, and generated output are git-ignored.
-- No credentials, tokens, or personal data are needed or stored.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+- No accounts, no tracking, no external API calls.
+- Uploaded files are read into memory, text is extracted, and the bytes are discarded.
+- Nothing you paste or upload leaves your computer.
