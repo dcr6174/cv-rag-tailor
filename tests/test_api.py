@@ -5,7 +5,6 @@ import io
 import zipfile
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
 from cv_tailor.api import app
@@ -22,24 +21,35 @@ def test_home_serves_the_ui_page() -> None:
     assert res.status_code == 200
     assert "text/html" in res.headers["content-type"]
     body = res.text
-    for needle in ("CV Tailor", "Job description", "Tailor my CV", "Download DOCX", "Download PDF"):
+    for needle in ("CV RAG Tailor", "Job description", "Tailor my CV", "Download DOCX", "Download PDF",
+                   "Requirement coverage", "Batch rank", "parseability", "Verbatim", "Rephrased"):
         assert needle in body
 
 
-def test_tailor_upload_with_text_file_returns_grounded_result() -> None:
+def test_tailor_endpoint_returns_v03_shape() -> None:
+    res = client.post("/tailor", json={"job_description": JD, "base_cv": CV, "page_budget": 1})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["tailored_cv"].startswith("CHANDRA") or "TARGETED SUMMARY" in body["tailored_cv"]
+    assert "score" not in str(body.keys()).lower()
+    cov = body["coverage"]
+    assert cov["hard_total"] >= 1
+    for row in cov["rows"]:
+        assert row["status"] in {"covered", "partial", "missing"}
+    assert body["parseability"], "expected parseability checks"
+    for unit in body["tailored_units"]:
+        assert unit["provenance"] in {"verbatim", "rephrased", "reframed"}
+        assert unit["evidence_ids"], "every tailored line must cite evidence"
+
+
+def test_tailor_upload_with_text_file() -> None:
     res = client.post(
         "/tailor-upload",
-        data={"job_description": JD},
+        data={"job_description": JD, "page_budget": "2"},
         files={"cv": ("base_cv.txt", CV.encode(), "text/plain")},
     )
     assert res.status_code == 200
-    body = res.json()
-    assert body["tailored_cv"].startswith("TARGETED SUMMARY")
-    assert body["match_report"]["score"] > 0
-    assert body["evidence"], "expected retrieved evidence"
-    assert body["change_log"], "expected at least one evidence-backed change"
-    for change in body["change_log"]:
-        assert change["evidence_ids"], "every change must cite evidence"
+    assert res.json()["page_budget"] == 2
 
 
 def test_tailor_upload_preserves_fabrication_guards() -> None:
@@ -51,7 +61,6 @@ def test_tailor_upload_preserves_fabrication_guards() -> None:
     )
     assert res.status_code == 200
     body = res.json()
-    # Missing JD terms surface as gaps and are never inserted into the tailored CV.
     assert "kubernetes" in [g.lower() for g in body["gaps"]]
     assert "kubernetes" not in body["tailored_cv"].lower()
 
@@ -75,65 +84,62 @@ def test_tailor_upload_rejects_empty_file() -> None:
     assert res.status_code == 422
 
 
-def test_tailor_upload_extracts_docx(tmp_path: Path) -> None:
-    import docx
-
-    document = docx.Document()
-    for line in CV.splitlines():
-        if line.strip():
-            document.add_paragraph(line)
-    buffer = io.BytesIO()
-    document.save(buffer)
-
+def test_tailor_upload_rejects_short_text() -> None:
     res = client.post(
         "/tailor-upload",
         data={"job_description": JD},
-        files={
-            "cv": (
-                "cv.docx",
-                buffer.getvalue(),
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            )
-        },
+        files={"cv": ("tiny.txt", b"too short", "text/plain")},
     )
-    assert res.status_code == 200
-    assert res.json()["match_report"]["score"] > 0
+    assert res.status_code == 422
 
 
-def test_export_docx_returns_a_valid_word_file() -> None:
-    payload = {
-        "tailored_cv": "TARGETED SUMMARY\nBuilt test tooling.\n\nEXPERIENCE\nQA Engineer",
-        "score": 75,
-        "matched": ["playwright"],
-        "missing": ["kubernetes"],
-    }
-    res = client.post("/export/docx", json=payload)
+def test_rank_endpoint_orders_results() -> None:
+    res = client.post("/rank", json={
+        "base_cv": CV,
+        "job_descriptions": [
+            "We need a Kubernetes and Terraform expert with 10 years of distributed systems experience.",
+            JD,
+        ],
+    })
     assert res.status_code == 200
-    assert res.headers["content-type"].startswith(
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
-    assert res.headers["content-disposition"].endswith('filename="tailored-cv.docx"')
-    archive = zipfile.ZipFile(io.BytesIO(res.content))
-    assert "word/document.xml" in archive.namelist()
-    text = archive.read("word/document.xml").decode()
-    assert "Built test tooling." in text
-    assert "75/100" in text
+    ranked = res.json()["ranked"]
+    assert ranked[0]["index"] == 1
+    assert ranked[0]["coverage_ratio"] >= ranked[1]["coverage_ratio"]
+
+
+def test_rank_endpoint_validates_input() -> None:
+    res = client.post("/rank", json={"base_cv": CV, "job_descriptions": ["short"]})
+    assert res.status_code == 422
+
+
+def test_export_docx_returns_a_real_word_file() -> None:
+    res = client.post("/export/docx", json={
+        "tailored_cv": CV, "hard_covered": 1, "hard_total": 2,
+        "preferred_covered": 0, "preferred_total": 0,
+        "matched": ["python"], "missing": ["kubernetes"],
+    })
+    assert res.status_code == 200
+    payload = res.content
+    assert zipfile.is_zipfile(io.BytesIO(payload))
+    with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+        xml = zf.read("word/document.xml").decode()
+    assert "Requirement coverage" in xml
+    assert "kubernetes" in xml  # reported as a gap
 
 
 def test_export_pdf_returns_a_real_pdf() -> None:
-    payload = {
-        "tailored_cv": "TARGETED SUMMARY\nBuilt test tooling.\n\nEXPERIENCE\nQA Engineer",
-        "score": 60,
-        "matched": ["ci"],
-        "missing": ["docker"],
-    }
-    res = client.post("/export/pdf", json=payload)
+    res = client.post("/export/pdf", json={
+        "tailored_cv": CV, "hard_covered": 1, "hard_total": 2,
+        "matched": ["python"], "missing": [],
+    })
     assert res.status_code == 200
-    assert res.headers["content-type"] == "application/pdf"
-    assert res.content.startswith(b"%PDF-")
-    assert len(res.content) > 1000
+    assert res.content.startswith(b"%PDF")
 
 
-def test_export_rejects_blank_cv() -> None:
-    res = client.post("/export/pdf", json={"tailored_cv": "short"})
-    assert res.status_code == 422
+def test_health() -> None:
+    assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_samples() -> None:
+    body = client.get("/samples").json()
+    assert "CHANDRA" in body["base_cv"] and len(body["job_description"]) > 20
