@@ -1,17 +1,41 @@
-"""Build downloadable DOCX and PDF versions of the tailored CV."""
+"""Build downloadable DOCX and PDF versions of the tailored CV.
+
+The export carries the honest coverage summary - hard requirements met,
+gaps, and the provenance of the tailoring - never a fake ATS percentage.
+"""
 from __future__ import annotations
 
 import io
 
 
-def build_docx(tailored_cv: str, score: int, matched: list[str], missing: list[str]) -> bytes:
+def _coverage_lines(hard_covered: int, hard_total: int, preferred_covered: int, preferred_total: int,
+                    matched: list[str], missing: list[str]) -> list[str]:
+    lines = [f"Requirement coverage: {hard_covered} of {hard_total} hard requirements fully covered."]
+    if preferred_total:
+        lines.append(f"Preferred requirements: {preferred_covered} of {preferred_total} fully covered.")
+    if matched:
+        lines.append("Covered skills: " + ", ".join(matched))
+    if missing:
+        lines.append("Gaps (absent from the base CV, not added): " + ", ".join(missing))
+    return lines
+
+
+NOTE = (
+    "Gaps are reported, not inserted. Every tailoring change links back to base-CV evidence, "
+    "and every generated line passed the number, entity, and entailment gates."
+)
+
+
+def build_docx(tailored_cv: str, hard_covered: int, hard_total: int,
+               preferred_covered: int, preferred_total: int,
+               matched: list[str], missing: list[str]) -> bytes:
     import docx
     from docx.shared import Pt
 
     document = docx.Document()
     document.add_heading("Tailored CV", level=0)
     meta = document.add_paragraph()
-    meta.add_run(f"Keyword match score: {score}/100").italic = True
+    meta.add_run(f"Requirement coverage: {hard_covered}/{hard_total} hard requirements").italic = True
     for block in tailored_cv.strip().split("\n"):
         line = block.strip()
         if not line:
@@ -22,26 +46,20 @@ def build_docx(tailored_cv: str, score: int, matched: list[str], missing: list[s
             document.add_paragraph(line)
 
     document.add_page_break()
-    document.add_heading("Match report", level=1)
-    document.add_paragraph(f"Score: {score}/100", style="List Bullet")
-    if matched:
-        document.add_paragraph("Matched keywords: " + ", ".join(matched), style="List Bullet")
-    if missing:
-        document.add_paragraph(
-            "Gaps (absent from the base CV, not added): " + ", ".join(missing),
-            style="List Bullet",
-        )
+    document.add_heading("Coverage report", level=1)
+    for line in _coverage_lines(hard_covered, hard_total, preferred_covered, preferred_total, matched, missing):
+        document.add_paragraph(line, style="List Bullet")
     note = document.add_paragraph()
-    note.add_run(
-        "Gaps are reported, not inserted. Every tailoring change links back to base-CV evidence."
-    ).font.size = Pt(9)
+    note.add_run(NOTE).font.size = Pt(9)
 
     buffer = io.BytesIO()
     document.save(buffer)
     return buffer.getvalue()
 
 
-def build_pdf(tailored_cv: str, score: int, matched: list[str], missing: list[str]) -> bytes:
+def build_pdf(tailored_cv: str, hard_covered: int, hard_total: int,
+              preferred_covered: int, preferred_total: int,
+              matched: list[str], missing: list[str]) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
@@ -52,7 +70,8 @@ def build_pdf(tailored_cv: str, score: int, matched: list[str], missing: list[st
         buffer, pagesize=A4, leftMargin=56, rightMargin=56, topMargin=56, bottomMargin=56
     )
     story = [Paragraph("Tailored CV", styles["Title"])]
-    story.append(Paragraph(f"<i>Keyword match score: {score}/100</i>", styles["Normal"]))
+    story.append(Paragraph(
+        f"<i>Requirement coverage: {hard_covered}/{hard_total} hard requirements</i>", styles["Normal"]))
     story.append(Spacer(1, 14))
 
     for block in tailored_cv.strip().split("\n"):
@@ -64,24 +83,11 @@ def build_pdf(tailored_cv: str, score: int, matched: list[str], missing: list[st
         story.append(Paragraph(_escape(line), style))
 
     story.append(Spacer(1, 18))
-    story.append(Paragraph("Match report", styles["Heading1"]))
-    story.append(Paragraph(f"Score: {score}/100", styles["Normal"]))
-    if matched:
-        story.append(Paragraph("Matched keywords: " + _escape(", ".join(matched)), styles["Normal"]))
-    if missing:
-        story.append(
-            Paragraph(
-                "Gaps (absent from the base CV, not added): " + _escape(", ".join(missing)),
-                styles["Normal"],
-            )
-        )
+    story.append(Paragraph("Coverage report", styles["Heading1"]))
+    for line in _coverage_lines(hard_covered, hard_total, preferred_covered, preferred_total, matched, missing):
+        story.append(Paragraph(_escape(line), styles["Normal"]))
     story.append(Spacer(1, 8))
-    story.append(
-        Paragraph(
-            "<i>Gaps are reported, not inserted. Every tailoring change links back to base-CV evidence.</i>",
-            styles["Normal"],
-        )
-    )
+    story.append(Paragraph(f"<i>{_escape(NOTE)}</i>", styles["Normal"]))
 
     doc.build(story)
     return buffer.getvalue()
