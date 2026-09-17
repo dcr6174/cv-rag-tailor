@@ -1,0 +1,1 @@
+We need a QA automation engineer skilled in Python, Selenium, REST API testing, CI/CD, Playwright, and performance testing. The engineer will own regression quality.
