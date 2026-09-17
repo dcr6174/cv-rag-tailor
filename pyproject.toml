@@ -4,13 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cv-rag-tailor"
-version = "0.1.0"
-description = "Grounded JD-to-CV tailoring with evidence retrieval, ATS reporting, and fabrication guards"
+version = "0.2.0"
+description = "Grounded JD-to-CV tailoring with a minimal browser UI, evidence retrieval, ATS reporting, fabrication guards, and DOCX/PDF export"
 requires-python = ">=3.10"
-dependencies = ["fastapi>=0.115", "pydantic>=2.7", "uvicorn>=0.30"]
+dependencies = [
+    "fastapi>=0.115",
+    "pydantic>=2.7",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
+    "pypdf>=4.0",
+    "python-docx>=1.1",
+    "reportlab>=4.0",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[tool.setuptools.package-data]
+cv_tailor = ["static/*.html"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
