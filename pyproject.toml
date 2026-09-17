@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cv-rag-tailor"
-version = "0.2.0"
-description = "Grounded JD-to-CV tailoring with a minimal browser UI, evidence retrieval, ATS reporting, fabrication guards, and DOCX/PDF export"
+version = "0.3.0"
+description = "Evidence-grounded JD-to-CV tailoring with requirement-coverage matrix, parseability checks, a post-generation verification gate, provenance labels, page budgets, batch JD ranking, and DOCX/PDF export"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",
